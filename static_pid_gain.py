@@ -522,6 +522,6 @@ if __name__ == "__main__":
     )
     
     # Run optimization
-    optimal_gains = run_optimization(env, maxiter=10, popsize=15)
+    optimal_gains = run_optimization(env, maxiter=20, popsize=15)
     
     print("Optimization complete.")
