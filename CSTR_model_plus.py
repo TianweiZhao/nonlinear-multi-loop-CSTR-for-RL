@@ -191,7 +191,7 @@ class CSTRRLEnv(gym.Env):
         # Define action space: 6 PID gains normalized in [-1, 1]
         self.action_space = spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float64)
 
-        # PID gain scaling: map normalized action to actual PID gains
+        # # PID gain scaling: map normalized action to actual PID gains
         # For Cb loop: lower = [-5, 0, 0.02], upper = [25, 20, 10]
         # For V loop: lower = [0, 0, 0.01], upper = [1, 2, 1]
         self.pid_lower = np.array([-5, 0, 0.02, 0, 0, 0.01])
@@ -576,7 +576,6 @@ class CSTRRLEnv(gym.Env):
         self.setpoint_history.insert(0, [self.setpoint_Cb, self.setpoint_V])  # Add current setpoint
 
         # Compute reward: negative sum of squared errors (use true state for more accurate reward)
-        # This matches the reward structure in the original code
         Cb_weight = 0.9
         V_weight = 0.1
         
@@ -584,7 +583,7 @@ class CSTRRLEnv(gym.Env):
         Cb_error = self.setpoint_Cb - self.true_state[1]
         V_error = self.setpoint_V - self.true_state[4]
         
-        # Calculate control effort penalty (from original code)
+        # Calculate control effort penalty
         if self.current_step == 0:
             u_change = np.zeros(2)
         else:
@@ -592,7 +591,7 @@ class CSTRRLEnv(gym.Env):
         
         # Calculate reward
         reward = -(Cb_weight * (Cb_error**2) + V_weight * (V_error**2))
-        # Optional control effort penalty as mentioned in original code
+        # Optional control effort penalty
         reward -= 0.0005 * u_change[0] + 0.005 * u_change[1]
 
         # Construct the observation with the N_t=2 history
@@ -645,7 +644,7 @@ class CSTRRLEnv(gym.Env):
             self.setpoint_V = self.setpoints_V[self.setpoint_index]
             
             # Log setpoint change
-            print(f"Changing setpoint at step {self.current_step} to Cb={self.setpoint_Cb}, V={self.setpoint_V}")
+            # print(f"Changing setpoint at step {self.current_step} to Cb={self.setpoint_Cb}, V={self.setpoint_V}")
 
 
     def render(self, mode='human'):
