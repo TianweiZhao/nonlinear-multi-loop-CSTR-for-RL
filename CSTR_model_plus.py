@@ -44,7 +44,7 @@ def cstr_dynamics(x, t, u, Tf, Caf):
 
     # Process parameters
     Tf = 350         # Feed temperature (K)
-    Fout = 100       # Outlet flow rate (m^3/min)
+    Fout = 100       # Outlet flow rate (m^3/sec)
     rho = 1000       # Density (kg/m^3)
     Cp = 0.239       # Heat capacity (J/kg-K)
     UA = 5e4         # Overall heat transfer coefficient * area (W/m^2-K)
@@ -52,13 +52,13 @@ def cstr_dynamics(x, t, u, Tf, Caf):
     # Reaction A -> B parameters (Arrhenius kinetics)
     mdelH_AB = 5e3   # Heat of reaction (J/mol)
     EoverR_AB = 8750 # Activation energy over gas constant (K)
-    k0_AB = 7.2e10   # Pre-exponential factor (1/min)
+    k0_AB = 7.2e10   # Pre-exponential factor (1/s)
     rA = k0_AB * np.exp(-EoverR_AB / T) * Ca
 
     # Reaction B -> C parameters (Arrhenius kinetics)
-    mdelH_BC = 4e3   # Heat of reaction (J/mol)
-    EoverR_BC = 10750# Activation energy over gas constant (K)
-    k0_BC = 8.2e10   # Pre-exponential factor (1/min)
+    mdelH_BC = 4e3    # Heat of reaction (J/mol)
+    EoverR_BC = 10750 # Activation energy over gas constant (K)
+    k0_BC = 8.2e10    # Pre-exponential factor (1/s)
     rB = k0_BC * np.exp(-EoverR_BC / T) * Cb
 
     # Material balances (mass derivatives)
@@ -462,7 +462,7 @@ class CSTRRLEnv(gym.Env):
         k0_BC = self.process_params['k0_BC']
 
         # Fixed parameters
-        Fout = 100       # Outlet flow rate (m^3/min)
+        Fout = 100       # Outlet flow rate (m^3/s)
         rho = 1000       # Density (kg/m^3)
         Cp = 0.239       # Heat capacity (J/kg-K)
 
@@ -661,19 +661,19 @@ class CSTRRLEnv(gym.Env):
 
             # Configure subplots
             self.axs[0, 0].set_title("Product B Concentration (Cb)")
-            self.axs[0, 0].set_xlabel("Time (min)")
+            self.axs[0, 0].set_xlabel("Time (s)")
             self.axs[0, 0].set_ylabel("Concentration B (mol/m^3)")
 
             self.axs[0, 1].set_title("Reactor Volume (V)")
-            self.axs[0, 1].set_xlabel("Time (min)")
+            self.axs[0, 1].set_xlabel("Time (s)")
             self.axs[0, 1].set_ylabel("Volume (m^3)")
 
             self.axs[1, 0].set_title("Reactor Temperature (T)")
-            self.axs[1, 0].set_xlabel("Time (min)")
+            self.axs[1, 0].set_xlabel("Time (s)")
             self.axs[1, 0].set_ylabel("Temperature (K)")
 
             self.axs[1, 1].set_title("Control Actions")
-            self.axs[1, 1].set_xlabel("Time (min)")
+            self.axs[1, 1].set_xlabel("Time (s)")
             self.axs[1, 1].set_ylabel("Value")
 
             plt.tight_layout()
@@ -689,7 +689,7 @@ class CSTRRLEnv(gym.Env):
             self.axs[0, 0].plot(self.history['time'], self.history['setpoint_Cb'], 'r--', label='Setpoint')
             self.axs[0, 0].legend()
             self.axs[0, 0].set_title('Product B Concentration')
-            self.axs[0, 0].set_xlabel('Time (min)')
+            self.axs[0, 0].set_xlabel('Time (s)')
             self.axs[0, 0].set_ylabel('Cb (mol/m³)')
 
             # Plot Volume and setpoint
@@ -697,14 +697,14 @@ class CSTRRLEnv(gym.Env):
             self.axs[0, 1].plot(self.history['time'], self.history['setpoint_V'], 'r--', label='Setpoint')
             self.axs[0, 1].legend()
             self.axs[0, 1].set_title('Reactor Volume')
-            self.axs[0, 1].set_xlabel('Time (min)')
+            self.axs[0, 1].set_xlabel('Time (s)')
             self.axs[0, 1].set_ylabel('Volume (m³)')
 
             # Plot Temperature
             self.axs[1, 0].plot(self.history['time'], self.history['T'], 'r-', label='Reactor Temp')
             self.axs[1, 0].legend()
             self.axs[1, 0].set_title('Reactor Temperature')
-            self.axs[1, 0].set_xlabel('Time (min)')
+            self.axs[1, 0].set_xlabel('Time (s)')
             self.axs[1, 0].set_ylabel('Temperature (K)')
 
             # Plot Control Actions
@@ -712,7 +712,7 @@ class CSTRRLEnv(gym.Env):
             self.axs[1, 1].plot(self.history['time'], self.history['Fin'], 'g-', label='Inlet Flow')
             self.axs[1, 1].legend()
             self.axs[1, 1].set_title('Control Actions')
-            self.axs[1, 1].set_xlabel('Time (min)')
+            self.axs[1, 1].set_xlabel('Time (s)')
             self.axs[1, 1].set_ylabel('Value')
 
             plt.tight_layout()

@@ -162,7 +162,7 @@ class StaticPIDOptimizer:
         # Run differential evolution
         result = differential_evolution(
             self.objective_function,
-            bounds=self.bounds,
+            bounds=self.bounds,  # keep bounds in original values
             maxiter=maxiter,
             popsize=popsize,
             disp=verbose,
@@ -190,7 +190,7 @@ class StaticPIDOptimizer:
             print(f"  Ki_V:  {actual_gains[4]:.4f}")
             print(f"  Kd_V:  {actual_gains[5]:.4f}")
         
-        return result.x, result
+        return result.x, result, actual_gains
     
     def normalized_to_actual_gains(self, normalized_gains):
         """
@@ -419,7 +419,7 @@ class StaticPIDOptimizer:
         # Plot Cb tracking
         axes[0].plot(avg_history['time'], avg_history['Cb'], 'b-', label='Measured Cb')
         axes[0].plot(avg_history['time'], avg_history['setpoint_Cb'], 'r--', label='Setpoint Cb')
-        axes[0].set_xlabel('Time (min)')
+        axes[0].set_xlabel('Time (s)')
         axes[0].set_ylabel('Concentration of B')
         axes[0].set_title(f'{schedule_name} - Cb Tracking')
         axes[0].legend()
@@ -428,7 +428,7 @@ class StaticPIDOptimizer:
         # Plot Volume tracking
         axes[1].plot(avg_history['time'], avg_history['V'], 'g-', label='Measured Volume')
         axes[1].plot(avg_history['time'], avg_history['setpoint_V'], 'r--', label='Setpoint Volume')
-        axes[1].set_xlabel('Time (min)')
+        axes[1].set_xlabel('Time (s)')
         axes[1].set_ylabel('Volume')
         axes[1].set_title(f'{schedule_name} - Volume Tracking')
         axes[1].legend()
@@ -437,7 +437,7 @@ class StaticPIDOptimizer:
         # Plot reward
         axes[2].plot(avg_history['time'], avg_history['reward'], 'm-', label='Reward')
         axes[2].plot(avg_history['time'], np.cumsum(avg_history['reward']), 'c-', label='Cumulative Reward')
-        axes[2].set_xlabel('Time (min)')
+        axes[2].set_xlabel('Time (s)')
         axes[2].set_ylabel('Reward')
         axes[2].set_title(f'{schedule_name} - Reward')
         axes[2].legend()
@@ -474,7 +474,7 @@ def run_optimization(env, maxiter=50, popsize=15):
     optimizer = StaticPIDOptimizer(env)
     
     # Run optimization
-    optimal_gains, _ = optimizer.optimize_pid_gains(
+    optimal_gains, _, actual_gains = optimizer.optimize_pid_gains(
         maxiter=maxiter, 
         popsize=popsize,
         verbose=True,
@@ -482,7 +482,7 @@ def run_optimization(env, maxiter=50, popsize=15):
     )
     
     # Save gains
-    optimizer.save_gains(optimal_gains)
+    optimizer.save_gains(actual_gains)
     
     # Evaluate on multiple setpoint schedules
     test_schedules = [
@@ -512,7 +512,7 @@ if __name__ == "__main__":
     
     # Create environment with minimal noise/disturbance/delay for optimization
     env = CSTRRLEnv(
-        simulation_steps=150,
+        simulation_steps=100,
         dt=1.0,
         uncertainty_level=0.0,     # No uncertainty
         noise_level=0.0,           # No measurement noise

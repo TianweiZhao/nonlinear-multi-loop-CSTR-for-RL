@@ -1,19 +1,20 @@
 """
 gen_sim_data.py - Generate simulation data for offline RL training
 
-This module provides functions to generate historical data from the CSTR system
+This module provides functions to generate diverse historical data from the CSTR system
 for training RL algorithms offline. It includes methods for:
-1. Generating diverse setpoint schedules
-2. Collecting data with various exploration strategies
+1. Generating varied setpoint schedules (increasing, decreasing, peak, valley, constant)
+2. Collecting data with multiple exploration strategies
 3. Processing and formatting data for offline learning
+4. Analyzing and visualizing the generated data
 """
 
 import numpy as np
 import os
 import torch
 import pickle
-from tqdm import tqdm
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 from collections import defaultdict
 
 
@@ -21,30 +22,35 @@ class DataGenerator:
     """
     Class for generating and managing simulation data for offline RL training.
     """
-    def __init__(self, env, save_dir="./data"):
+    def __init__(self, env, save_dir="./offline_data", seed=None):
         """
         Initialize the data generator.
         
         Args:
             env: The CSTR environment instance
             save_dir (str): Directory to save generated data
+            seed (int): Random seed for reproducibility (optional)
         """
         self.env = env
         self.save_dir = save_dir
+        
+        # Set random seed if provided
+        if seed is not None:
+            np.random.seed(seed)
         
         # Create save directory if it doesn't exist
         os.makedirs(save_dir, exist_ok=True)
         
         # Default setpoint schedules for training
         self.default_setpoint_schedules = [
-            [0.65, 0.75, 0.85],  # Increasing steps
-            [0.85, 0.75, 0.65],  # Decreasing steps
-            [0.70, 0.90, 0.70],  # Peak
-            [0.80, 0.60, 0.80],  # Valley
-            [0.75, 0.75, 0.75]   # Constant
+            [0.15, 0.30, 0.45, 0.60, 0.75],  # Increasing steps
+            [0.85, 0.70, 0.55, 0.40, 0.25],  # Decreasing steps
+            [0.35, 0.65, 0.90, 0.65, 0.35],  # Peak
+            [0.88, 0.68, 0.48, 0.68, 0.88],  # Valley
+            [0.75, 0.75, 0.75, 0.75, 0.75]   # Constant
         ]
     
-    def generate_random_setpoint_schedule(self, n_setpoints=3, min_val=0.60, max_val=0.90):
+    def generate_random_setpoint_schedule(self, n_setpoints=5, min_val=0.20, max_val=0.90):
         """
         Generate a random setpoint schedule.
         
@@ -56,7 +62,16 @@ class DataGenerator:
         Returns:
             list: Random setpoint schedule
         """
-        return list(min_val + (max_val - min_val) * np.random.rand(n_setpoints))
+        # Generate random setpoints within the specified range
+        schedule = list(min_val + (max_val - min_val) * np.random.rand(n_setpoints))
+        
+        # Ensure there's at least some variation in the schedule
+        if n_setpoints > 1 and max(schedule) - min(schedule) < 0.1:
+            # If variation is too small, create a more diverse schedule
+            schedule[0] = min_val + 0.1   # Near minimum
+            schedule[-1] = max_val - 0.1  # Near maximum
+        
+        return schedule
     
     def generate_exploration_action(self, step, total_steps, strategy="random"):
         """
@@ -80,8 +95,7 @@ class DataGenerator:
         
         elif strategy == "static_pid":
             # Static PID gains with noise
-            # These values are normalized PID gains that work reasonably well
-            base_action = np.array([0.3, 0.2, 0.1, 0.2, 0.1, 0.05])
+            base_action = np.array([0.95, 0.01, 0.2, 0.2, 0.5, 0.05])
             noise = 0.2 * np.random.randn(6)  # Add some exploration noise
             return np.clip(base_action + noise, -1, 1)
         
@@ -91,7 +105,7 @@ class DataGenerator:
             exploration_scale = max(0.1, 1.0 - progress)  # Decay from 1.0 to 0.1
             
             # Baseline PID gains
-            base_action = np.array([0.3, 0.2, 0.1, 0.2, 0.1, 0.05])
+            base_action = np.array([0.95, 0.01, 0.2, 0.2, 0.5, 0.05])
             noise = exploration_scale * np.random.randn(6)
             
             return np.clip(base_action + noise, -1, 1)
@@ -102,12 +116,13 @@ class DataGenerator:
                 return self.env.action_space.sample()
             else:
                 # PID-based with noise
-                base_action = np.array([0.3, 0.2, 0.1, 0.2, 0.1, 0.05])
+                base_action = np.array([0.95, 0.01, 0.2, 0.2, 0.5, 0.05])
                 noise = 0.15 * np.random.randn(6)
                 return np.clip(base_action + noise, -1, 1)
         
         else:
             # Default to random
+            print(f"Unknown strategy '{strategy}', defaulting to random")
             return self.env.action_space.sample()
     
     def generate_dataset(self, n_episodes=20, steps_per_setpoint=25, 
@@ -144,8 +159,12 @@ class DataGenerator:
             'next_states': [],
             'dones': [],
             'pid_gains': [],  # Store the actual PID gains (unscaled)
-            'setpoints': []   # Store the setpoints for reference
+            'setpoints': [],  # Store the setpoints for reference
+            'episode_ids': [] # Store which episode each transition belongs to
         }
+        
+        # Metadata for episodes
+        episode_metadata = []
         
         # Run episodes to collect data
         episode_range = tqdm(range(n_episodes)) if verbose else range(n_episodes)
@@ -169,6 +188,14 @@ class DataGenerator:
             
             # Calculate total steps for this episode
             total_steps = len(setpoint_schedule) * steps_per_setpoint
+            
+            # Store episode metadata
+            episode_info = {
+                'id': ep,
+                'setpoint_schedule': setpoint_schedule,
+                'exploration_strategy': exploration_strategy,
+                'rewards': []
+            }
             
             # Run the episode
             done = False
@@ -196,6 +223,10 @@ class DataGenerator:
                 dataset['dones'].append(done or truncated)
                 dataset['pid_gains'].append(pid_gains)
                 dataset['setpoints'].append([current_setpoint_Cb, current_setpoint_V])
+                dataset['episode_ids'].append(ep)
+                
+                # Update episode info
+                episode_info['rewards'].append(reward)
                 
                 # Move to next step
                 state = next_state
@@ -203,17 +234,25 @@ class DataGenerator:
                 
                 if done or truncated:
                     break
+            
+            # Update episode metadata
+            episode_info['total_reward'] = sum(episode_info['rewards'])
+            episode_info['steps'] = step
+            episode_metadata.append(episode_info)
         
         # Convert lists to numpy arrays
         for key in dataset:
             dataset[key] = np.array(dataset[key])
+        
+        # Add episode metadata to dataset
+        dataset['episode_metadata'] = episode_metadata
         
         if verbose:
             print(f"Generated dataset with {len(dataset['states'])} transitions from {n_episodes} episodes")
         
         return dataset
     
-    def save_dataset(self, dataset, filename="cstr_dataset.pkl"):
+    def save_dataset(self, dataset, filename="offline_train_dataset.pkl"):
         """
         Save dataset to a file.
         
@@ -226,7 +265,7 @@ class DataGenerator:
             pickle.dump(dataset, f)
         print(f"Dataset saved to {filepath}")
     
-    def load_dataset(self, filename="cstr_dataset.pkl"):
+    def load_dataset(self, filename="offline_train_dataset.pkl"):
         """
         Load dataset from a file.
         
@@ -253,11 +292,37 @@ class DataGenerator:
         Returns:
             dict: Statistics about the dataset
         """
+        # Create plots directory
+        plots_dir = os.path.join(self.save_dir, "plots")
+        os.makedirs(plots_dir, exist_ok=True)
+        
         # Basic statistics
         n_transitions = len(dataset['states'])
-        n_episodes = sum(dataset['dones'])
+        episode_metadata = dataset.get('episode_metadata', [])
+        n_episodes = len(episode_metadata) if episode_metadata else dataset['dones'].sum()
         
-        print(f"Dataset contains {n_transitions} transitions from approximately {n_episodes} episodes")
+        print(f"Dataset contains {n_transitions} transitions from {n_episodes} episodes")
+        
+        # Extract episode rewards if available in metadata
+        if episode_metadata:
+            episode_rewards = [ep['total_reward'] for ep in episode_metadata]
+            episode_ids = [ep['id'] for ep in episode_metadata]
+        else:
+            # Calculate rewards per episode if metadata not available
+            episode_rewards = []
+            episode_ids = []
+            
+            current_reward = 0
+            current_id = 0
+            
+            for i, (reward, done) in enumerate(zip(dataset['rewards'], dataset['dones'])):
+                current_reward += reward
+                
+                if done or i == len(dataset['rewards']) - 1:
+                    episode_rewards.append(current_reward)
+                    episode_ids.append(current_id)
+                    current_reward = 0
+                    current_id += 1
         
         # Reward statistics
         rewards = dataset['rewards']
@@ -274,23 +339,33 @@ class DataGenerator:
             print(f"  Action {i} - Mean: {np.mean(actions[:, i]):.4f}, Std: {np.std(actions[:, i]):.4f}")
         
         # PID gains statistics
-        pid_gains = dataset['pid_gains']
-        pid_names = ["Kp_Cb", "Ki_Cb", "Kd_Cb", "Kp_V", "Ki_V", "Kd_V"]
-        print(f"PID gains statistics:")
-        for i, name in enumerate(pid_names):
-            print(f"  {name} - Mean: {np.mean(pid_gains[:, i]):.4f}, Std: {np.std(pid_gains[:, i]):.4f}")
+        if 'pid_gains' in dataset:
+            pid_gains = dataset['pid_gains']
+            pid_names = ["Kp_Cb", "Ki_Cb", "Kd_Cb", "Kp_V", "Ki_V", "Kd_V"]
+            print(f"PID gains statistics:")
+            for i, name in enumerate(pid_names):
+                print(f"  {name} - Mean: {np.mean(pid_gains[:, i]):.4f}, Std: {np.std(pid_gains[:, i]):.4f}")
         
         # Setpoint distribution
-        setpoints = dataset['setpoints']
-        unique_setpoints = np.unique(setpoints[:, 0])
-        print(f"Unique Cb setpoints: {unique_setpoints}")
+        if 'setpoints' in dataset:
+            setpoints = dataset['setpoints']
+            unique_setpoints = np.unique(setpoints[:, 0])
+            print(f"Unique Cb setpoints: {unique_setpoints}")
         
-        # Plot action distributions
+        # Create plots
         if save_plots:
-            os.makedirs(os.path.join(self.save_dir, "plots"), exist_ok=True)
+            # 1. Episode reward plot
+            plt.figure(figsize=(10, 6))
+            plt.bar(episode_ids, episode_rewards, alpha=0.7)
+            plt.title("Episode Rewards")
+            plt.xlabel("Episode ID")
+            plt.ylabel("Total Reward")
+            plt.grid(True, axis='y')
+            plt.savefig(os.path.join(plots_dir, "episode_rewards.png"))
+            plt.close()
             
-            # Action distribution plots
-            plt.figure(figsize=(15, 10))
+            # 2. Action distribution (overall distribution of all actions)
+            plt.figure(figsize=(12, 8))
             for i in range(actions.shape[1]):
                 plt.subplot(2, 3, i+1)
                 plt.hist(actions[:, i], bins=30, alpha=0.7)
@@ -299,31 +374,84 @@ class DataGenerator:
                 plt.ylabel("Frequency")
                 plt.grid(True)
             plt.tight_layout()
-            plt.savefig(os.path.join(self.save_dir, "plots", "action_distributions.png"))
+            plt.savefig(os.path.join(plots_dir, "action_distributions.png"))
             plt.close()
             
-            # PID gains distribution plots
-            plt.figure(figsize=(15, 10))
-            for i, name in enumerate(pid_names):
-                plt.subplot(2, 3, i+1)
-                plt.hist(pid_gains[:, i], bins=30, alpha=0.7)
-                plt.title(f"{name} Distribution")
-                plt.xlabel("Value")
-                plt.ylabel("Frequency")
-                plt.grid(True)
-            plt.tight_layout()
-            plt.savefig(os.path.join(self.save_dir, "plots", "pid_distributions.png"))
-            plt.close()
+            # 3. State trajectories vs setpoints (sample from an episode)
+            if episode_metadata and len(episode_metadata) > 0:
+                # Select a random episode to visualize
+                sample_ep_id = np.random.choice(episode_ids)
+                sample_indices = np.where(dataset['episode_ids'] == sample_ep_id)[0]
+                
+                if len(sample_indices) > 0:
+                    # Extract data for this episode
+                    ep_states = dataset['states'][sample_indices]
+                    ep_next_states = dataset['next_states'][sample_indices]
+                    ep_setpoints = dataset['setpoints'][sample_indices]
+                    
+                    # Plot Cb trajectory
+                    plt.figure(figsize=(12, 8))
+                    
+                    # Plot Cb vs setpoint
+                    plt.subplot(2, 2, 1)
+                    plt.plot(range(len(sample_indices)), ep_next_states[:, 0], 'b-', label='Cb (Measured)')
+                    plt.plot(range(len(sample_indices)), ep_setpoints[:, 0], 'r--', label='Cb (Setpoint)')
+                    plt.title(f"Cb Trajectory (Episode {sample_ep_id})")
+                    plt.xlabel("Step")
+                    plt.ylabel("Concentration B")
+                    plt.legend()
+                    plt.grid(True)
+                    
+                    # Plot V vs setpoint
+                    plt.subplot(2, 2, 2)
+                    plt.plot(range(len(sample_indices)), ep_next_states[:, 2], 'g-', label='V (Measured)')
+                    plt.plot(range(len(sample_indices)), ep_setpoints[:, 1], 'r--', label='V (Setpoint)')
+                    plt.title(f"Volume Trajectory (Episode {sample_ep_id})")
+                    plt.xlabel("Step")
+                    plt.ylabel("Volume")
+                    plt.legend()
+                    plt.grid(True)
+                    
+                    # Plot Temperature
+                    plt.subplot(2, 2, 3)
+                    plt.plot(range(len(sample_indices)), ep_next_states[:, 3], 'm-')
+                    plt.title(f"Temperature Trajectory (Episode {sample_ep_id})")
+                    plt.xlabel("Step")
+                    plt.ylabel("Temperature")
+                    plt.grid(True)
+                    
+                    # Plot rewards
+                    plt.subplot(2, 2, 4)
+                    plt.plot(range(len(sample_indices)), dataset['rewards'][sample_indices], 'c-')
+                    plt.title(f"Rewards (Episode {sample_ep_id})")
+                    plt.xlabel("Step")
+                    plt.ylabel("Reward")
+                    plt.grid(True)
+                    
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(plots_dir, f"sample_trajectory_ep{sample_ep_id}.png"))
+                    plt.close()
             
-            # Reward distribution plot
+            # 4. Reward distribution
             plt.figure(figsize=(10, 6))
             plt.hist(rewards, bins=50, alpha=0.7)
             plt.title("Reward Distribution")
             plt.xlabel("Reward")
             plt.ylabel("Frequency")
             plt.grid(True)
-            plt.savefig(os.path.join(self.save_dir, "plots", "reward_distribution.png"))
+            plt.savefig(os.path.join(plots_dir, "reward_distribution.png"))
             plt.close()
+            
+            # 5. Setpoint coverage
+            if 'setpoints' in dataset:
+                plt.figure(figsize=(10, 6))
+                plt.hist(setpoints[:, 0], bins=30, alpha=0.7)
+                plt.title("Setpoint Cb Distribution")
+                plt.xlabel("Setpoint Cb Value")
+                plt.ylabel("Frequency")
+                plt.grid(True)
+                plt.savefig(os.path.join(plots_dir, "setpoint_distribution.png"))
+                plt.close()
         
         # Return statistics dictionary
         stats = {
@@ -333,10 +461,15 @@ class DataGenerator:
             'reward_std': np.std(rewards),
             'action_means': np.mean(actions, axis=0),
             'action_stds': np.std(actions, axis=0),
-            'pid_means': np.mean(pid_gains, axis=0),
-            'pid_stds': np.std(pid_gains, axis=0),
-            'unique_setpoints': unique_setpoints
+            'episode_rewards': episode_rewards
         }
+        
+        if 'pid_gains' in dataset:
+            stats['pid_means'] = np.mean(pid_gains, axis=0)
+            stats['pid_stds'] = np.std(pid_gains, axis=0)
+        
+        if 'setpoints' in dataset:
+            stats['unique_setpoints'] = unique_setpoints
         
         return stats
     
@@ -354,23 +487,50 @@ class DataGenerator:
             return None
         
         # Initialize combined dataset with the same keys
-        combined = {key: [] for key in datasets[0].keys()}
+        combined = {key: [] for key in datasets[0].keys() if key != 'episode_metadata'}
+        
+        # Initialize list for episode metadata
+        combined_metadata = []
+        
+        # Track episode ID offset
+        episode_id_offset = 0
         
         # Combine all datasets
-        for dataset in datasets:
+        for i, dataset in enumerate(datasets):
+            # Combine all arrays except metadata
             for key in combined:
                 combined[key].append(dataset[key])
+            
+            # Adjust episode IDs and metadata
+            if 'episode_metadata' in dataset:
+                for ep_info in dataset['episode_metadata']:
+                    # Create a copy of the episode info
+                    new_ep_info = ep_info.copy()
+                    # Adjust the episode ID to avoid duplicates
+                    new_ep_info['id'] += episode_id_offset
+                    # Add dataset origin for reference
+                    new_ep_info['origin_dataset'] = i
+                    combined_metadata.append(new_ep_info)
+                
+                # Update the episode ID offset
+                episode_id_offset += len(dataset['episode_metadata'])
+            else:
+                # If no metadata, estimate number of episodes from done flags
+                episode_id_offset += np.sum(dataset['dones'])
         
         # Concatenate arrays
         for key in combined:
             combined[key] = np.concatenate(combined[key], axis=0)
+        
+        # Add the combined metadata
+        combined['episode_metadata'] = combined_metadata
         
         print(f"Combined {len(datasets)} datasets with a total of {len(combined['states'])} transitions")
         
         return combined
 
 
-def generate_diverse_dataset(env, n_episodes=50, save_dir="./data"):
+def generate_diverse_dataset(env, n_episodes=40, save_dir="./data", seed=None):
     """
     Convenience function to generate a diverse dataset with multiple strategies.
     
@@ -378,44 +538,79 @@ def generate_diverse_dataset(env, n_episodes=50, save_dir="./data"):
         env: CSTR environment instance
         n_episodes (int): Total number of episodes to simulate
         save_dir (str): Directory to save data
+        seed (int): Random seed for reproducibility (optional)
         
     Returns:
         dict: Combined dataset
     """
     # Create data generator
-    gen = DataGenerator(env, save_dir=save_dir)
+    gen = DataGenerator(env, save_dir=save_dir, seed=seed)
+    
+    # Number of episodes per strategy
+    eps_per_strategy = n_episodes // 4
+    remainder = n_episodes % 4
+    strategy_eps = [
+        eps_per_strategy + (1 if i < remainder else 0) 
+        for i in range(4)
+    ]
+    
+    # Generate different setpoint schedules for diversity
+    basic_schedules = [
+        [0.15, 0.30, 0.45, 0.60, 0.75],  # Increasing steps
+        [0.85, 0.70, 0.55, 0.40, 0.25],  # Decreasing steps
+        [0.35, 0.65, 0.90, 0.65, 0.35],  # Peak
+        [0.88, 0.68, 0.48, 0.68, 0.88],  # Valley
+        [0.75, 0.75, 0.75, 0.75, 0.75]   # Constant
+    ]
+    
+    # Add some random schedules
+    random_schedules = []
+    for _ in range(3):
+        random_schedules.append(gen.generate_random_setpoint_schedule(n_setpoints=4))
+    
+    all_schedules = basic_schedules + random_schedules
     
     # Generate data with different exploration strategies
     datasets = []
     
+    print(f"Generating diverse dataset with {n_episodes} total episodes")
+    
     # Random exploration
+    print(f"Generating {strategy_eps[0]} episodes with 'random' strategy")
     dataset_random = gen.generate_dataset(
-        n_episodes=n_episodes // 4,
+        n_episodes=strategy_eps[0],
         exploration_strategy="random",
+        custom_schedules=all_schedules,
         verbose=True
     )
     datasets.append(dataset_random)
     
     # Static PID exploration
+    print(f"Generating {strategy_eps[1]} episodes with 'static_pid' strategy")
     dataset_static = gen.generate_dataset(
-        n_episodes=n_episodes // 4,
+        n_episodes=strategy_eps[1],
         exploration_strategy="static_pid",
+        custom_schedules=all_schedules,
         verbose=True
     )
     datasets.append(dataset_static)
     
     # Decaying exploration
+    print(f"Generating {strategy_eps[2]} episodes with 'decaying' strategy")
     dataset_decay = gen.generate_dataset(
-        n_episodes=n_episodes // 4,
+        n_episodes=strategy_eps[2],
         exploration_strategy="decaying",
+        custom_schedules=all_schedules,
         verbose=True
     )
     datasets.append(dataset_decay)
     
     # Mixed exploration
+    print(f"Generating {strategy_eps[3]} episodes with 'mixed' strategy")
     dataset_mixed = gen.generate_dataset(
-        n_episodes=n_episodes // 4,
+        n_episodes=strategy_eps[3],
         exploration_strategy="mixed",
+        custom_schedules=all_schedules,
         verbose=True
     )
     datasets.append(dataset_mixed)
@@ -425,27 +620,26 @@ def generate_diverse_dataset(env, n_episodes=50, save_dir="./data"):
     
     # Analyze and save the combined dataset
     gen.analyze_dataset(combined_dataset, save_plots=True)
-    gen.save_dataset(combined_dataset, filename="cstr_diverse_dataset.pkl")
+    gen.save_dataset(combined_dataset, filename="offline_train_dataset.pkl")
     
     return combined_dataset
 
 
 if __name__ == "__main__":
-    # Example usage
     from CSTR_model_plus import CSTRRLEnv
     
-    # Create environment
+    # Create environment with realistic conditions
     env = CSTRRLEnv(
-        simulation_steps=100,  # Should be enough for a full episode
+        simulation_steps=100,
         dt=1.0,
-        uncertainty_level=0.05,  # Add some uncertainty for realism
-        noise_level=0.02,        # Add some noise for realism
-        actuator_delay_steps=1,  # Add realistic delays
-        transport_delay_steps=1,
-        enable_disturbances=True  # Enable disturbances for robustness
+        uncertainty_level=0.00,     # Add some uncertainty for realism
+        noise_level=0.00,           # Add some noise for realism
+        actuator_delay_steps=0,     # Add realistic delays
+        transport_delay_steps=0,
+        enable_disturbances=False   # Enable disturbances for robustness
     )
     
-    # Generate dataset
-    dataset = generate_diverse_dataset(env, n_episodes=50)
+    # Generate dataset with default parameters
+    dataset = generate_diverse_dataset(env, n_episodes=40)
     
     print("Dataset generation complete.")
