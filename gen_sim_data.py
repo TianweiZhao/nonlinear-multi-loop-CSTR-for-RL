@@ -22,7 +22,7 @@ class DataGenerator:
     """
     Class for generating and managing simulation data for offline RL training.
     """
-    def __init__(self, env, save_dir="./offline_data", seed=None):
+    def __init__(self, env, save_dir="./data", seed=42):
         """
         Initialize the data generator.
         
@@ -43,14 +43,14 @@ class DataGenerator:
         
         # Default setpoint schedules for training
         self.default_setpoint_schedules = [
-            [0.15, 0.30, 0.45, 0.60, 0.75],  # Increasing steps
-            [0.85, 0.70, 0.55, 0.40, 0.25],  # Decreasing steps
-            [0.35, 0.65, 0.90, 0.65, 0.35],  # Peak
-            [0.88, 0.68, 0.48, 0.68, 0.88],  # Valley
-            [0.75, 0.75, 0.75, 0.75, 0.75]   # Constant
+            [0.60, 0.65, 0.70, 0.75, 0.80, 0.85],  # Increasing steps
+            [0.86, 0.81, 0.76, 0.71, 0.66, 0.61],  # Decreasing steps
+            [0.62, 0.72, 0.82, 0.82, 0.72, 0.62],  # Peak
+            [0.83, 0.73, 0.63, 0.63, 0.73, 0.83],  # Valley
+            [0.84, 0.84, 0.84, 0.84, 0.84, 0.84]   # Constant
         ]
     
-    def generate_random_setpoint_schedule(self, n_setpoints=5, min_val=0.20, max_val=0.90):
+    def generate_random_setpoint_schedule(self, n_setpoints=6, min_val=0.60, max_val=0.90):
         """
         Generate a random setpoint schedule.
         
@@ -68,7 +68,7 @@ class DataGenerator:
         # Ensure there's at least some variation in the schedule
         if n_setpoints > 1 and max(schedule) - min(schedule) < 0.1:
             # If variation is too small, create a more diverse schedule
-            schedule[0] = min_val + 0.1   # Near minimum
+            schedule[0] = min_val + 0.1  # Near minimum
             schedule[-1] = max_val - 0.1  # Near maximum
         
         return schedule
@@ -81,23 +81,17 @@ class DataGenerator:
             step (int): Current step
             total_steps (int): Total number of steps
             strategy (str): Exploration strategy to use
-                - "random": Pure random actions
                 - "static_pid": Fixed PID gains with noise
                 - "decaying": Decreasing randomness over time
-                - "mixed": Combination of strategies
                 
         Returns:
             numpy.ndarray: Action vector in range [-1, 1]
         """
-        if strategy == "random":
-            # Pure random actions
-            return self.env.action_space.sample()
-        
-        elif strategy == "static_pid":
+        if strategy == "static_pid":
             # Static PID gains with noise
-            base_action = np.array([0.95, 0.01, 0.2, 0.2, 0.5, 0.05])
-            noise = 0.2 * np.random.randn(6)  # Add some exploration noise
-            return np.clip(base_action + noise, -1, 1)
+            base_action = np.array([25, 0.73, 0.02, 0.35, 0.26, 0.27])
+            noise = 0.15 * np.random.randn(6)  # Add some exploration noise
+            return base_action + noise
         
         elif strategy == "decaying":
             # Decaying randomness (more exploration early, more exploitation later)
@@ -105,20 +99,10 @@ class DataGenerator:
             exploration_scale = max(0.1, 1.0 - progress)  # Decay from 1.0 to 0.1
             
             # Baseline PID gains
-            base_action = np.array([0.95, 0.01, 0.2, 0.2, 0.5, 0.05])
+            base_action = np.array([25, 0.73, 0.02, 0.35, 0.26, 0.27])
             noise = exploration_scale * np.random.randn(6)
             
-            return np.clip(base_action + noise, -1, 1)
-        
-        elif strategy == "mixed":
-            # Mixed strategy: sometimes random, sometimes PID-based
-            if np.random.rand() < 0.3:  # 30% chance of pure random
-                return self.env.action_space.sample()
-            else:
-                # PID-based with noise
-                base_action = np.array([0.95, 0.01, 0.2, 0.2, 0.5, 0.05])
-                noise = 0.15 * np.random.randn(6)
-                return np.clip(base_action + noise, -1, 1)
+            return base_action + noise
         
         else:
             # Default to random
@@ -126,7 +110,7 @@ class DataGenerator:
             return self.env.action_space.sample()
     
     def generate_dataset(self, n_episodes=20, steps_per_setpoint=25, 
-                         exploration_strategy="mixed", custom_schedules=None,
+                         exploration_strategy="static_pid", custom_schedules=None,
                          verbose=True):
         """
         Generate a dataset by running episodes with exploration.
@@ -530,7 +514,7 @@ class DataGenerator:
         return combined
 
 
-def generate_diverse_dataset(env, n_episodes=40, save_dir="./data", seed=None):
+def generate_diverse_dataset(env, n_episodes=50, save_dir="./offline_data", seed=42):
     """
     Convenience function to generate a diverse dataset with multiple strategies.
     
@@ -547,26 +531,26 @@ def generate_diverse_dataset(env, n_episodes=40, save_dir="./data", seed=None):
     gen = DataGenerator(env, save_dir=save_dir, seed=seed)
     
     # Number of episodes per strategy
-    eps_per_strategy = n_episodes // 4
-    remainder = n_episodes % 4
+    eps_per_strategy = n_episodes // 2
+    remainder = n_episodes % 2
     strategy_eps = [
         eps_per_strategy + (1 if i < remainder else 0) 
-        for i in range(4)
+        for i in range(2)
     ]
     
     # Generate different setpoint schedules for diversity
     basic_schedules = [
-        [0.15, 0.30, 0.45, 0.60, 0.75],  # Increasing steps
-        [0.85, 0.70, 0.55, 0.40, 0.25],  # Decreasing steps
-        [0.35, 0.65, 0.90, 0.65, 0.35],  # Peak
-        [0.88, 0.68, 0.48, 0.68, 0.88],  # Valley
-        [0.75, 0.75, 0.75, 0.75, 0.75]   # Constant
+        [0.60, 0.65, 0.70, 0.75, 0.80, 0.85],  # Increasing 
+        [0.86, 0.81, 0.76, 0.71, 0.66, 0.61],  # Decreasing 
+        [0.62, 0.72, 0.82, 0.82, 0.72, 0.62],  # Peak
+        [0.83, 0.73, 0.63, 0.63, 0.73, 0.83],  # Valley
+        [0.84, 0.84, 0.84, 0.84, 0.84, 0.84]   # Constant
     ]
     
     # Add some random schedules
     random_schedules = []
-    for _ in range(3):
-        random_schedules.append(gen.generate_random_setpoint_schedule(n_setpoints=4))
+    for _ in range(2):
+        random_schedules.append(gen.generate_random_setpoint_schedule(n_setpoints=5))
     
     all_schedules = basic_schedules + random_schedules
     
@@ -575,20 +559,10 @@ def generate_diverse_dataset(env, n_episodes=40, save_dir="./data", seed=None):
     
     print(f"Generating diverse dataset with {n_episodes} total episodes")
     
-    # Random exploration
-    print(f"Generating {strategy_eps[0]} episodes with 'random' strategy")
-    dataset_random = gen.generate_dataset(
-        n_episodes=strategy_eps[0],
-        exploration_strategy="random",
-        custom_schedules=all_schedules,
-        verbose=True
-    )
-    datasets.append(dataset_random)
-    
     # Static PID exploration
-    print(f"Generating {strategy_eps[1]} episodes with 'static_pid' strategy")
+    print(f"Generating {strategy_eps[0]} episodes with 'static_pid' strategy")
     dataset_static = gen.generate_dataset(
-        n_episodes=strategy_eps[1],
+        n_episodes=strategy_eps[0],
         exploration_strategy="static_pid",
         custom_schedules=all_schedules,
         verbose=True
@@ -596,50 +570,42 @@ def generate_diverse_dataset(env, n_episodes=40, save_dir="./data", seed=None):
     datasets.append(dataset_static)
     
     # Decaying exploration
-    print(f"Generating {strategy_eps[2]} episodes with 'decaying' strategy")
+    print(f"Generating {strategy_eps[1]} episodes with 'decaying' strategy")
     dataset_decay = gen.generate_dataset(
-        n_episodes=strategy_eps[2],
+        n_episodes=strategy_eps[1],
         exploration_strategy="decaying",
         custom_schedules=all_schedules,
         verbose=True
     )
     datasets.append(dataset_decay)
     
-    # Mixed exploration
-    print(f"Generating {strategy_eps[3]} episodes with 'mixed' strategy")
-    dataset_mixed = gen.generate_dataset(
-        n_episodes=strategy_eps[3],
-        exploration_strategy="mixed",
-        custom_schedules=all_schedules,
-        verbose=True
-    )
-    datasets.append(dataset_mixed)
     
     # Combine all datasets
     combined_dataset = gen.combine_datasets(datasets)
     
     # Analyze and save the combined dataset
     gen.analyze_dataset(combined_dataset, save_plots=True)
-    gen.save_dataset(combined_dataset, filename="offline_train_dataset.pkl")
+    gen.save_dataset(combined_dataset, filename="cstr_diverse_dataset.pkl")
     
     return combined_dataset
 
 
 if __name__ == "__main__":
+    # Example usage
     from CSTR_model_plus import CSTRRLEnv
     
     # Create environment with realistic conditions
     env = CSTRRLEnv(
-        simulation_steps=100,
+        simulation_steps=120,
         dt=1.0,
-        uncertainty_level=0.00,     # Add some uncertainty for realism
-        noise_level=0.00,           # Add some noise for realism
-        actuator_delay_steps=0,     # Add realistic delays
+        uncertainty_level=0.00,  # Add some uncertainty for realism
+        noise_level=0.00,        # Add some noise for realism
+        actuator_delay_steps=0,  # Add realistic delays
         transport_delay_steps=0,
-        enable_disturbances=False   # Enable disturbances for robustness
+        enable_disturbances=False  # Enable disturbances for robustness
     )
     
     # Generate dataset with default parameters
-    dataset = generate_diverse_dataset(env, n_episodes=40)
+    dataset = generate_diverse_dataset(env, n_episodes=20)
     
     print("Dataset generation complete.")

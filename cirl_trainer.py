@@ -1,12 +1,9 @@
 """
-Training approach for Control-Informed Reinforcement Learning (CIRL)
+CIRL Training
 
-This module provides a trainer class for CIRL policies using a two-phase approach:
-1. Supervised learning on offline data (initializes the policy to mimic effective controllers)
-2. Direct policy optimization using Particle Swarm Optimization (PSO)
-
-The CIRL approach integrates PID control structure into the reinforcement learning framework,
-allowing for adaptive PID gain tuning with the interpretability of traditional control systems.
+This module provides functionality for training CIRL policies using a combination
+of gradient-based methods and Particle Swarm Optimization (PSO). It leverages
+the gen_sim_data.py to generate diverse offline training data.
 """
 
 import os
@@ -16,7 +13,7 @@ import random
 from tqdm import tqdm
 import pickle
 import matplotlib.pyplot as plt
-from time import time
+from datetime import datetime
 
 from CSTR_model_plus import CSTRRLEnv
 from gen_sim_data import DataGenerator
@@ -163,13 +160,20 @@ class CIRLTrainer:
         """
         self.env = env
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        self.save_dir = save_dir
         
-        # Create directories
+        # Create directories with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.save_dir = os.path.join(save_dir, f"run_{timestamp}")
         os.makedirs(self.save_dir, exist_ok=True)
         os.makedirs(os.path.join(self.save_dir, "models"), exist_ok=True)
         os.makedirs(os.path.join(self.save_dir, "plots"), exist_ok=True)
         os.makedirs(os.path.join(self.save_dir, "data"), exist_ok=True)
+        
+        # Log configuration file
+        with open(os.path.join(self.save_dir, "config.txt"), 'w') as f:
+            f.write(f"Environment: {env.__class__.__name__}\n")
+            f.write(f"Device: {device}\n")
+            f.write(f"Timestamp: {timestamp}\n")
         
         # Get environment dimensions
         self.state_dim = env.observation_space.shape[0]
@@ -181,33 +185,6 @@ class CIRLTrainer:
         
         # Initialize data generator
         self.data_generator = DataGenerator(env, save_dir=os.path.join(self.save_dir, "data"))
-    
-    def load_offline_dataset(self, file_path="/home/jzhao/work/nonlinear-multi-loop-CSTR-for-RL/offline_data/cstr_diverse_dataset.pkl", verbose=True):
-        """
-        Load the pre-generated offline dataset.
-        
-        Args:
-            file_path (str): Path to the dataset file
-            verbose (bool): Whether to print progress information
-            
-        Returns:
-            dict: Loaded dataset
-        """
-        try:
-            with open(file_path, 'rb') as f:
-                dataset = pickle.load(f)
-            
-            if verbose:
-                print(f"Loaded dataset from {file_path} with {len(dataset['states'])} transitions")
-            
-            return dataset
-        except Exception as e:
-            if verbose:
-                print(f"Error loading dataset from {file_path}: {e}")
-                print("Will try to generate a new dataset instead.")
-            
-            # Fall back to generating data if loading fails
-            return self.generate_diverse_training_data(verbose=verbose)
     
     def generate_diverse_training_data(self, n_episodes=100, steps_per_setpoint=20, verbose=True):
         """
@@ -228,25 +205,17 @@ class CIRLTrainer:
         setpoint_schedules = []
         
         # Regular increasing and decreasing sequences
-        setpoint_schedules.append(np.linspace(0.1, 0.9, 9).tolist())
-        setpoint_schedules.append(np.linspace(0.9, 0.1, 9).tolist())
-        
-        # Oscillating sequences
-        setpoint_schedules.append([0.3, 0.7, 0.3, 0.7, 0.3, 0.7, 0.3, 0.7, 0.3])
-        setpoint_schedules.append([0.7, 0.3, 0.7, 0.3, 0.7, 0.3, 0.7, 0.3, 0.7])
-        
-        # Step sequences
-        setpoint_schedules.append([0.2, 0.2, 0.5, 0.5, 0.8, 0.8, 0.5, 0.5, 0.2])
-        setpoint_schedules.append([0.8, 0.8, 0.5, 0.5, 0.2, 0.2, 0.5, 0.5, 0.8])
+        setpoint_schedules.append(np.linspace(0.4, 0.9, 20).tolist())
+        setpoint_schedules.append(np.linspace(0.9, 0.4, 20).tolist())
         
         # Random sequences
         for _ in range(3):
-            random_setpoints = np.random.uniform(0.1, 0.9, 9).tolist()
+            random_setpoints = np.random.uniform(0.4, 0.9, 20).tolist()
             setpoint_schedules.append(random_setpoints)
         
         # Generate data with different exploration strategies
         datasets = []
-        strategies = ["random", "static_pid", "decaying", "mixed"]
+        strategies = ["static_pid", "decaying"]
         n_per_strategy = n_episodes // len(strategies)
         
         for strategy in strategies:
@@ -276,12 +245,12 @@ class CIRLTrainer:
         
         return combined_dataset
     
-    def create_policy_network(self, hidden_dims=[64, 64]):
+    def create_policy_network(self, hidden_dims=[128, 128]):
         """
         Create a CIRL Policy Network.
         
         Args:
-            hidden_dims (list): Dimensions of hidden layers (default: [64, 64])
+            hidden_dims (list): Dimensions of hidden layers
             
         Returns:
             CIRLPolicyNetwork: The policy network
@@ -294,12 +263,9 @@ class CIRLTrainer:
         return policy
     
     def train_supervised(self, policy, dataset, n_epochs=50, batch_size=256, 
-                        learning_rate=1e-3, weight_decay=1e-4, save_interval=10, verbose=True):
+                      learning_rate=3e-4, weight_decay=1e-4, save_interval=10, verbose=True):
         """
-        Phase 1: Train the CIRL policy using supervised learning on offline data.
-        
-        This phase teaches the policy to mimic the PID gains in the dataset,
-        serving as initialization for subsequent optimization phases.
+        Train the CIRL policy using supervised learning on offline data.
         
         Args:
             policy (CIRLPolicyNetwork): The policy network to train
@@ -411,12 +377,9 @@ class CIRLTrainer:
         return stats
     
     def train_pso(self, policy_template, n_iterations=50, num_particles=20, 
-                min_param=-0.05, max_param=0.05, verbose=True):
+               min_param=-0.05, max_param=0.05, verbose=True):
         """
-        Phase 2: Fine-tune the CIRL policy using Particle Swarm Optimization (PSO).
-        
-        This phase directly optimizes the policy for maximum reward, building on
-        the initialized policy from the supervised learning phase.
+        Optimize the CIRL policy using Particle Swarm Optimization.
         
         Args:
             policy_template (CIRLPolicyNetwork): Template for policy initialization
@@ -440,10 +403,10 @@ class CIRLTrainer:
         
         # Define diverse setpoint schedules for optimization
         optimization_schedules = [
-            [0.6, 0.7, 0.8],  # Increasing in optimal range
-            [0.8, 0.7, 0.6],  # Decreasing in optimal range
-            [0.6, 0.9, 0.6],  # Peak in optimal range
-            [0.9, 0.6, 0.9]   # Valley in optimal range
+            [0.6, 0.7, 0.8],  # Increasing
+            [0.85, 0.75, 0.65],  # Decreasing
+            [0.8, 0.7, 0.8],  # Valley
+            [0.7, 0.8, 0.7]   # Peak
         ]
         
         # Setup for setpoint tracking
@@ -575,15 +538,15 @@ class CIRLTrainer:
         """
         policy.eval()  # Set to evaluation mode
         
-        # Define test setpoint schedules with focus on optimal Cb range
+        # Define test setpoint schedules
         test_schedules = [
-            {"name": "Increasing", "setpoints": [0.6, 0.75, 0.9]},
-            {"name": "Decreasing", "setpoints": [0.9, 0.75, 0.6]},
-            {"name": "Peak", "setpoints": [0.6, 0.9, 0.6]},
-            {"name": "Valley", "setpoints": [0.9, 0.6, 0.9]},
-            {"name": "Constant", "setpoints": [0.75, 0.75, 0.75]}
+            {"name": "Increasing", "setpoints": [0.6, 0.7, 0.8]},
+            {"name": "Decreasing", "setpoints": [0.85, 0.75, 0.65]},
+            {"name": "Valley", "setpoints": [0.8, 0.7, 0.8]},
+            {"name": "Peak", "setpoints": [0.7, 0.8, 0.7]},
+            {"name": "Constant", "setpoints": [0.8, 0.8, 0.8]}
         ]
-        
+    
         results = {
             "schedules": {},
             "overall": {
@@ -857,19 +820,23 @@ class CIRLTrainer:
         plt.savefig(os.path.join(plots_dir, "best_trajectory_details.png"))
         plt.close()
     
-    def train_combined(self, dataset_path=None, hidden_dims=[64, 64], n_supervised_epochs=50, 
-                     n_pso_iterations=50, batch_size=256, learning_rate=3e-4, weight_decay=1e-4,
-                     num_particles=20, min_param=-0.05, max_param=0.05, verbose=True):
+    def train_combined(self, hidden_dims=[128, 128], dataset=None, n_episodes=100, 
+                     steps_per_setpoint=20, n_supervised_epochs=50, n_pso_iterations=50, 
+                     batch_size=256, learning_rate=3e-4, weight_decay=1e-4,
+                     num_particles=20, min_param=-0.05, max_param=0.05,
+                     eval_after_supervised=True, verbose=True):
         """
         Train CIRL policy using the combined approach:
-        1. Load or generate dataset
+        1. Generate diverse data
         2. Pretrain with supervised learning
         3. Fine-tune with PSO
         4. Evaluate the policy
         
         Args:
-            dataset_path (str): Path to existing dataset (if None, will use default or generate)
             hidden_dims (list): Dimensions of hidden layers
+            dataset (dict): Existing dataset (if None, will generate new data)
+            n_episodes (int): Number of episodes for data generation
+            steps_per_setpoint (int): Steps per setpoint for data generation
             n_supervised_epochs (int): Number of epochs for supervised learning
             n_pso_iterations (int): Number of iterations for PSO optimization
             batch_size (int): Batch size for supervised learning
@@ -878,27 +845,19 @@ class CIRLTrainer:
             num_particles (int): Number of particles for PSO
             min_param (float): Minimum parameter value for PSO
             max_param (float): Maximum parameter value for PSO
+            eval_after_supervised (bool): Whether to evaluate after supervised learning
             verbose (bool): Whether to print progress information
             
         Returns:
             CIRLPolicyNetwork: The trained policy
         """
-        # Track total training time
-        start_time = time()
-        
-        # 1. Load or generate dataset
-        if verbose:
-            print("=== Phase 0: Preparing Dataset ===")
-        
-        if dataset_path:
-            # Load specific dataset
-            with open(dataset_path, 'rb') as f:
-                dataset = pickle.load(f)
-            if verbose:
-                print(f"Loaded dataset from {dataset_path} with {len(dataset['states'])} transitions")
-        else:
-            # Try to load default dataset or generate new one
-            dataset = self.load_offline_dataset(verbose=verbose)
+        # 1. Generate or load dataset
+        if dataset is None:
+            dataset = self.generate_diverse_training_data(
+                n_episodes=n_episodes,
+                steps_per_setpoint=steps_per_setpoint,
+                verbose=verbose
+            )
         
         # 2. Create policy network
         policy = self.create_policy_network(hidden_dims=hidden_dims)
@@ -918,6 +877,18 @@ class CIRLTrainer:
             verbose=verbose
         )
         
+        # Optional evaluation after supervised learning
+        if eval_after_supervised:
+            if verbose:
+                print("\n=== Evaluating Policy After Supervised Learning ===")
+            
+            self.evaluate_policy(
+                policy=policy,
+                n_episodes=3,
+                render=False,
+                verbose=verbose
+            )
+        
         # 4. PSO optimization
         if verbose:
             print("\n=== Phase 2: PSO Optimization ===")
@@ -933,7 +904,7 @@ class CIRLTrainer:
         
         # 5. Final evaluation
         if verbose:
-            print("\n=== Phase 3: Final Evaluation ===")
+            print("\n=== Final Evaluation ===")
         
         self.evaluate_policy(
             policy=best_policy,
@@ -942,46 +913,11 @@ class CIRLTrainer:
             verbose=verbose
         )
         
-        # Calculate total training time
-        training_time = time() - start_time
-        
         # Save final model
         final_model_path = os.path.join(self.save_dir, "models", "cirl_policy_final.pt")
         best_policy.save(final_model_path)
         
         if verbose:
-            print(f"\nTraining completed in {training_time:.2f} seconds!")
-            print(f"Final model saved to: {final_model_path}")
+            print(f"\nTraining completed! Final model saved to: {final_model_path}")
         
         return best_policy
-
-
-# Example usage 
-if __name__ == "__main__":
-    # Create environment with minimal noise/disturbance
-    env = CSTRRLEnv(
-        simulation_steps=150,
-        dt=1.0,
-        uncertainty_level=0.0,     # No uncertainty
-        noise_level=0.0,           # No measurement noise
-        actuator_delay_steps=0,    # No actuator delay
-        transport_delay_steps=0,   # No transport delay
-        enable_disturbances=False  # No disturbances
-    )
-    
-    # Set random seed for reproducibility
-    set_seed(42)
-    
-    # Create trainer
-    trainer = CIRLTrainer(env, save_dir="./results/cirl_training")
-    
-    # Train policy (shortened parameters for quick example)
-    best_policy = trainer.train_combined(
-        hidden_dims=[64, 64],
-        n_supervised_epochs=30,
-        n_pso_iterations=30,
-        batch_size=256,
-        verbose=True
-    )
-    
-    print("CIRL training complete.")
