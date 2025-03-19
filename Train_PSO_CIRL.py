@@ -152,7 +152,7 @@ class CIRLTrainer:
     """
     Trainer for CIRL policies using offline data and combined optimization methods.
     """
-    def __init__(self, env, save_dir="./results/cirl", device="cuda"):
+    def __init__(self, env, save_dir="./results/CIRL", device="cuda"):
         """
         Initialize the CIRL Trainer.
         
@@ -209,7 +209,7 @@ class CIRLTrainer:
             # Fall back to generating data if loading fails
             return self.generate_diverse_training_data(verbose=verbose)
     
-    def generate_diverse_training_data(self, n_episodes=100, steps_per_setpoint=20, verbose=True):
+    def generate_diverse_training_data(self, n_episodes=100, steps_per_setpoint=50, verbose=True):
         """
         Generate diverse training data for offline learning.
         
@@ -226,27 +226,15 @@ class CIRLTrainer:
         
         # Generate various setpoint schedules for diverse learning
         setpoint_schedules = []
-        
-        # Regular increasing and decreasing sequences
-        setpoint_schedules.append(np.linspace(0.1, 0.9, 9).tolist())
-        setpoint_schedules.append(np.linspace(0.9, 0.1, 9).tolist())
-        
-        # Oscillating sequences
-        setpoint_schedules.append([0.3, 0.7, 0.3, 0.7, 0.3, 0.7, 0.3, 0.7, 0.3])
-        setpoint_schedules.append([0.7, 0.3, 0.7, 0.3, 0.7, 0.3, 0.7, 0.3, 0.7])
-        
-        # Step sequences
-        setpoint_schedules.append([0.2, 0.2, 0.5, 0.5, 0.8, 0.8, 0.5, 0.5, 0.2])
-        setpoint_schedules.append([0.8, 0.8, 0.5, 0.5, 0.2, 0.2, 0.5, 0.5, 0.8])
-        
+               
         # Random sequences
         for _ in range(3):
-            random_setpoints = np.random.uniform(0.1, 0.9, 9).tolist()
+            random_setpoints = np.random.uniform(0.4, 0.9, 20).tolist()
             setpoint_schedules.append(random_setpoints)
         
         # Generate data with different exploration strategies
         datasets = []
-        strategies = ["random", "static_pid", "decaying", "mixed"]
+        strategies = ["static_pid", "decaying"]
         n_per_strategy = n_episodes // len(strategies)
         
         for strategy in strategies:
@@ -276,12 +264,12 @@ class CIRLTrainer:
         
         return combined_dataset
     
-    def create_policy_network(self, hidden_dims=[64, 64]):
+    def create_policy_network(self, hidden_dims=[128, 128]):
         """
         Create a CIRL Policy Network.
         
         Args:
-            hidden_dims (list): Dimensions of hidden layers (default: [64, 64])
+            hidden_dims (list): Dimensions of hidden layers (default: [128, 128])
             
         Returns:
             CIRLPolicyNetwork: The policy network
@@ -442,12 +430,12 @@ class CIRLTrainer:
         optimization_schedules = [
             [0.6, 0.7, 0.8],  # Increasing in optimal range
             [0.8, 0.7, 0.6],  # Decreasing in optimal range
-            [0.6, 0.9, 0.6],  # Peak in optimal range
-            [0.9, 0.6, 0.9]   # Valley in optimal range
+            [0.6, 0.8, 0.6],  # Peak in optimal range
+            [0.8, 0.6, 0.8]   # Valley in optimal range
         ]
         
         # Setup for setpoint tracking
-        setpoints_V = [100.0] * 3  # 3 setpoints per schedule
+        setpoints_V = [100.0] * 3      # 3 setpoints per schedule
         setpoint_durations = [50] * 3  # 50 steps per setpoint
         
         # Initialize global best
@@ -528,8 +516,8 @@ class CIRLTrainer:
                         f"Best: {global_best_score:.4f} | Mean: {mean_score:.4f}"
                     )
             
-            # Save checkpoint every 10 iterations
-            if (iteration + 1) % 10 == 0:
+            # Save checkpoint every 20 iterations
+            if (iteration + 1) % 20 == 0:
                 checkpoint_path = os.path.join(self.save_dir, "models", f"cirl_policy_pso_iter_{iteration+1}.pt")
                 best_policy.save(checkpoint_path)
         
@@ -577,11 +565,10 @@ class CIRLTrainer:
         
         # Define test setpoint schedules with focus on optimal Cb range
         test_schedules = [
-            {"name": "Increasing", "setpoints": [0.6, 0.75, 0.9]},
-            {"name": "Decreasing", "setpoints": [0.9, 0.75, 0.6]},
-            {"name": "Peak", "setpoints": [0.6, 0.9, 0.6]},
-            {"name": "Valley", "setpoints": [0.9, 0.6, 0.9]},
-            {"name": "Constant", "setpoints": [0.75, 0.75, 0.75]}
+            {"name": "Increasing", "setpoints": [0.65, 0.7, 0.75]},
+            {"name": "Decreasing", "setpoints": [0.75, 0.7, 0.65]},
+            {"name": "Peak", "setpoints": [0.70, 0.75, 0.70]},
+            {"name": "Valley", "setpoints": [0.75, 0.70, 0.75]}
         ]
         
         results = {
@@ -857,7 +844,7 @@ class CIRLTrainer:
         plt.savefig(os.path.join(plots_dir, "best_trajectory_details.png"))
         plt.close()
     
-    def train_combined(self, dataset_path=None, hidden_dims=[64, 64], n_supervised_epochs=50, 
+    def train_combined(self, dataset_path=None, hidden_dims=[128, 128], n_supervised_epochs=50, 
                      n_pso_iterations=50, batch_size=256, learning_rate=3e-4, weight_decay=1e-4,
                      num_particles=20, min_param=-0.05, max_param=0.05, verbose=True):
         """
@@ -977,7 +964,7 @@ if __name__ == "__main__":
     
     # Train policy (shortened parameters for quick example)
     best_policy = trainer.train_combined(
-        hidden_dims=[64, 64],
+        hidden_dims=[128, 128],
         n_supervised_epochs=30,
         n_pso_iterations=30,
         batch_size=256,

@@ -27,7 +27,7 @@ import torch
 from CSTR_model_plus import CSTRRLEnv
 from static_pid_gain import StaticPIDOptimizer
 from RL_algorithms import create_agent
-from Example_Training_with_CIRLPSO import CIRL_PSO, PSOParticle
+
 
 
 class ControllerEvaluator:

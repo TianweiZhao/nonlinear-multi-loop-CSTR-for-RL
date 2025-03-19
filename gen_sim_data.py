@@ -22,7 +22,7 @@ class DataGenerator:
     """
     Class for generating and managing simulation data for offline RL training.
     """
-    def __init__(self, env, save_dir="./data", seed=42):
+    def __init__(self, env, save_dir="./offline_data", seed=42):
         """
         Initialize the data generator.
         
@@ -43,14 +43,13 @@ class DataGenerator:
         
         # Default setpoint schedules for training
         self.default_setpoint_schedules = [
-            [0.60, 0.65, 0.70, 0.75, 0.80, 0.85],  # Increasing steps
-            [0.86, 0.81, 0.76, 0.71, 0.66, 0.61],  # Decreasing steps
-            [0.62, 0.72, 0.82, 0.82, 0.72, 0.62],  # Peak
-            [0.83, 0.73, 0.63, 0.63, 0.73, 0.83],  # Valley
-            [0.84, 0.84, 0.84, 0.84, 0.84, 0.84]   # Constant
+            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],  # Increasing steps
+            [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],  # Decreasing steps
+            [0.2, 0.4, 0.6, 0.8, 0.8, 0.6, 0.4, 0.2],  # Peak
+            [0.8, 0.6, 0.4, 0.25, 0.25, 0.4, 0.6, 0.8] # Valley
         ]
     
-    def generate_random_setpoint_schedule(self, n_setpoints=6, min_val=0.60, max_val=0.90):
+    def generate_random_setpoint_schedule(self, n_setpoints=50, min_val=0.10, max_val=0.80):
         """
         Generate a random setpoint schedule.
         
@@ -540,18 +539,17 @@ def generate_diverse_dataset(env, n_episodes=50, save_dir="./offline_data", seed
     
     # Generate different setpoint schedules for diversity
     basic_schedules = [
-        [0.60, 0.65, 0.70, 0.75, 0.80, 0.85],  # Increasing 
-        [0.86, 0.81, 0.76, 0.71, 0.66, 0.61],  # Decreasing 
-        [0.62, 0.72, 0.82, 0.82, 0.72, 0.62],  # Peak
-        [0.83, 0.73, 0.63, 0.63, 0.73, 0.83],  # Valley
-        [0.84, 0.84, 0.84, 0.84, 0.84, 0.84]   # Constant
+        [0.60, 0.65, 0.70, 0.75, 0.80],  # Increasing 
+        [0.80, 0.75, 0.70, 0.65, 0.60],  # Decreasing 
+        [0.60, 0.70, 0.80, 0.70, 0.60],  # Peak
+        [0.80, 0.70, 0.60, 0.70, 0.80],  # Valley
     ]
     
     # Add some random schedules
     random_schedules = []
     for _ in range(2):
-        random_schedules.append(gen.generate_random_setpoint_schedule(n_setpoints=5))
-    
+        random_schedules.append(gen.generate_random_setpoint_schedule(n_setpoints=50, min_val=0.1, max_val=0.8))
+        
     all_schedules = basic_schedules + random_schedules
     
     # Generate data with different exploration strategies
@@ -596,7 +594,7 @@ if __name__ == "__main__":
     
     # Create environment with realistic conditions
     env = CSTRRLEnv(
-        simulation_steps=120,
+        simulation_steps=300,
         dt=1.0,
         uncertainty_level=0.00,  # Add some uncertainty for realism
         noise_level=0.00,        # Add some noise for realism
@@ -606,6 +604,6 @@ if __name__ == "__main__":
     )
     
     # Generate dataset with default parameters
-    dataset = generate_diverse_dataset(env, n_episodes=20)
+    dataset = generate_diverse_dataset(env, n_episodes=50, seed=42)
     
     print("Dataset generation complete.")
