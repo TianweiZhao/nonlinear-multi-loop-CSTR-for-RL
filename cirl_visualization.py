@@ -30,10 +30,10 @@ def plot_all_schedules(policy, env, save_dir=None, render=False):
     
     # Set up test schedules
     test_schedules = [
-        {"name": "Increasing", "setpoints": [0.12, 0.35, 0.48, 0.71, 0.84]},
-        {"name": "Decreasing", "setpoints": [0.86, 0.73, 0.61, 0.48, 0.25]},
-        {"name": "Peak", "setpoints": [0.25, 0.30, 0.65, 0.30, 0.25]},
-        {"name": "Valley", "setpoints": [0.86, 0.71, 0.24, 0.63, 0.82]}
+        {"name": "Increasing", "setpoints": [0.15, 0.35, 0.55, 0.65, 0.75]},
+        {"name": "Decreasing", "setpoints": [0.75, 0.65, 0.55, 0.35, 0.15]},
+        {"name": "Peak", "setpoints": [0.45, 0.65, 0.75, 0.65, 0.45]},
+        {"name": "Valley", "setpoints": [0.75, 0.65, 0.45, 0.65, 0.75]}
     ]
     
     # Create figure for all schedules
@@ -326,10 +326,10 @@ def analyze_pid_gain_patterns(policy, env, save_dir=None):
     
     # Set up test schedules
     test_schedules = [
-        {"name": "Increasing", "setpoints": [0.12, 0.35, 0.48, 0.71, 0.84]},
-        {"name": "Decreasing", "setpoints": [0.86, 0.73, 0.61, 0.48, 0.25]},
-        {"name": "Peak", "setpoints": [0.25, 0.30, 0.65, 0.30, 0.25]},
-        {"name": "Valley", "setpoints": [0.86, 0.71, 0.24, 0.63, 0.82]}
+        {"name": "Increasing", "setpoints": [0.15, 0.35, 0.55, 0.65, 0.75]},
+        {"name": "Decreasing", "setpoints": [0.75, 0.65, 0.55, 0.35, 0.15]},
+        {"name": "Peak", "setpoints": [0.45, 0.65, 0.75, 0.65, 0.45]},
+        {"name": "Valley", "setpoints": [0.75, 0.65, 0.45, 0.65, 0.75]}
     ]
     
     # Parameters to store gain transitions at setpoint changes

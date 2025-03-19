@@ -428,15 +428,15 @@ class CIRLTrainer:
         
         # Define diverse setpoint schedules for optimization
         optimization_schedules = [
-            [0.6, 0.7, 0.8],  # Increasing in optimal range
-            [0.8, 0.7, 0.6],  # Decreasing in optimal range
-            [0.6, 0.8, 0.6],  # Peak in optimal range
-            [0.8, 0.6, 0.8]   # Valley in optimal range
+            [0.15, 0.35, 0.55, 0.65, 0.75],  # Increasing steps
+            [0.75, 0.65, 0.55, 0.35, 0.15],  # Decreasing steps
+            [0.45, 0.65, 0.75, 0.65, 0.45],  # Peak
+            [0.75, 0.65, 0.45, 0.65, 0.75]   # Valley
         ]
         
         # Setup for setpoint tracking
-        setpoints_V = [100.0] * 3      # 3 setpoints per schedule
-        setpoint_durations = [50] * 3  # 50 steps per setpoint
+        setpoints_V = [100.0] * 5      # 3 setpoints per schedule
+        setpoint_durations = [50] * 5  # 50 steps per setpoint
         
         # Initialize global best
         global_best_position = {name: param.data.clone() 
@@ -565,10 +565,10 @@ class CIRLTrainer:
         
         # Define test setpoint schedules with focus on optimal Cb range
         test_schedules = [
-            {"name": "Increasing", "setpoints": [0.65, 0.7, 0.75]},
-            {"name": "Decreasing", "setpoints": [0.75, 0.7, 0.65]},
-            {"name": "Peak", "setpoints": [0.70, 0.75, 0.70]},
-            {"name": "Valley", "setpoints": [0.75, 0.70, 0.75]}
+            {"name": "Increasing", "setpoints": [0.25, 0.5, 0.75]},
+            {"name": "Decreasing", "setpoints": [0.75, 0.5, 0.25]},
+            {"name": "Peak", "setpoints": [0.5, 0.75, 0.5]},
+            {"name": "Valley", "setpoints": [0.75, 0.5, 0.75]}
         ]
         
         results = {

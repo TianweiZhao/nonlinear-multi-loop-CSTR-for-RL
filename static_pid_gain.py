@@ -36,7 +36,7 @@ class StaticPIDOptimizer:
         self.steps_per_setpoint = steps_per_setpoint
         
         # Define default setpoint schedule used for optimization
-        self.default_setpoint_schedule = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9]
+        self.default_setpoint_schedule = [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.8]
         
         # Define bounds for the PID gains (normalized to [-1, 1])
         self.bounds = [(-1, 1)] * 6
@@ -486,10 +486,10 @@ def run_optimization(env, maxiter=50, popsize=15):
     
     # Evaluate on multiple setpoint schedules
     test_schedules = [
-        [0.12, 0.35, 0.48, 0.71, 0.84],  # Increasing steps (training schedule)
-        [0.86, 0.73, 0.61, 0.48, 0.25],  # Decreasing steps
-        [0.25, 0.30, 0.65, 0.30, 0.25],  # Peak
-        [0.86, 0.71, 0.24, 0.63, 0.82]   # Valley
+        [0.15, 0.35, 0.55, 0.65, 0.75],  # Increasing steps
+        [0.75, 0.65, 0.55, 0.35, 0.15],  # Decreasing steps
+        [0.45, 0.65, 0.75, 0.65, 0.45],  # Peak
+        [0.75, 0.65, 0.45, 0.65, 0.75]   # Valley
     ]
     
     optimizer.evaluate_and_plot(
@@ -512,7 +512,7 @@ if __name__ == "__main__":
     
     # Create environment with minimal noise/disturbance/delay for optimization
     env = CSTRRLEnv(
-        simulation_steps=100,
+        simulation_steps=150,
         dt=1.0,
         uncertainty_level=0.0,     # No uncertainty
         noise_level=0.0,           # No measurement noise
